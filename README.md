@@ -1,414 +1,144 @@
-# Value-Aligned LLM Safety Validation
+<div align="center">
 
-This repository reproduces and extends the Value Injection Method (VIM) experiment from
-**Unintended Harms of Value-Aligned LLMs: Psychological and Empirical Insights**.
+# 🧭 Value-Aligned LLM Safety
 
-The goal is simple and deliberately controlled:
+### Reproducing the Unintended Harms of Value-Aligned LLMs
 
-> If two LLMs are trained with the same base model and the same VIM pipeline, but only the
-> human value **Power** is changed, does the safety behavior of the model change?
+**When a model learns a value, which safety risks change?**  
+VIM 기반 가치 학습의 효과를 Mistral-7B로 변형 재현하고, 전체 위험률과 유형별 변화를 비교합니다.
 
-We test this with a counterfactual-style setting:
+![Research](https://img.shields.io/badge/Research-Alignment%20%26%20Safety-7657D4?style=flat-square)
+![Model](https://img.shields.io/badge/Backbone-Mistral--7B-555C70?style=flat-square)
+![Training](https://img.shields.io/badge/Training-LoRA%20%2F%20PEFT-4C76AA?style=flat-square)
+![Status](https://img.shields.io/badge/Scope-Modified%20Reproduction-C19059?style=flat-square)
 
-- **Power High**: Power = 6.0, all other values = 3.0
-- **Power Low**: Power = 1.0, all other values = 3.0
+[Question](#research-question) · [Setup](#experimental-setup) · [Results](#results) · [Reproduce](#reproduction) · [Limitations](#limitations)
 
-The final finding is not that Power simply makes the model "more unsafe" everywhere.
-Instead, increasing Power shifts the type of risk: the model becomes more vulnerable to
-control-, manipulation-, dominance-, and system-abuse-oriented harmful behavior.
+</div>
 
-## Motivation
-
-Value alignment is often treated as an unambiguously positive intervention: align a model
-more strongly with human values, and safety should improve. The paper challenges that
-intuition by showing that different values can amplify different downstream risks.
-
-This reproduction focuses on one value from Schwartz's human value theory:
-
-**Power**: social status, prestige, and control or dominance over people and resources.
-
-The experiment asks whether emphasizing Power changes the model's response style and
-safety profile under harmful prompts. This matters because personalized or value-aligned
-LLMs may not merely become "more aligned"; they may become aligned toward a value profile
-that increases specific kinds of unsafe behavior.
+---
 
 ## Research Question
 
-This project validates the following hypothesis:
+사람의 특정 가치관을 모델에 강조해 학습시키면, 전체적인 안전성이 동일해 보이더라도 **일부 위험 유형에 대한 응답이 달라질 수 있을까?**
 
-> Value alignment does not monotonically improve safety. Emphasizing a specific value can
-> increase specific safety risks, even when the overall harmfulness rate changes only
-> slightly.
+본 프로젝트는 논문 **[Unintended Harms of Value-Aligned LLMs: Psychological and Empirical Insights](https://aclanthology.org/2025.acl-long.1532/)**의 Value Injection Method(VIM)를 **Mistral-7B + LoRA** 조건으로 *변형 재현*한 작업입니다. 원 논문의 모든 조건을 동일하게 복제한 것은 아닙니다.
 
-For this reproduction, the target question is:
+## Key Findings
 
-> Does increasing the Power value make a VIM-trained model more likely to produce
-> dominance-, control-, manipulation-, or system-abuse-related harmful outputs?
+<div align="center">
 
-## Experimental Design
+**72.7% ≈ 73.0%**  
+*BeaverTails overall unsafe rate · Power Low vs High*
 
-Only one value is manipulated.
+**15.9% → 18.9%**  
+*HEx-PHI harmfulness rate · Power Low vs High*
 
-| Distribution | Achievement | Benevolence | Conformity | Hedonism | Power | Security | Self-direction | Stimulation | Tradition | Universalism |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `power_low` | 3.0 | 3.0 | 3.0 | 3.0 | 1.0 | 3.0 | 3.0 | 3.0 | 3.0 | 3.0 |
-| `power_high` | 3.0 | 3.0 | 3.0 | 3.0 | 6.0 | 3.0 | 3.0 | 3.0 | 3.0 | 3.0 |
+</div>
 
-This setup makes Power the main explanatory variable while holding the rest of the value
-profile constant.
+| Evaluation | Power Low | Power High | Observation |
+|:--|--:|--:|:--|
+| Power survey mean | ~2.90 | ~3.27 | Power 방향의 상대적 이동 확인 |
+| BeaverTails unsafe rate | **72.7%** | **73.0%** | 전체 비율 변화는 작음 |
+| HEx-PHI harmfulness rate | **15.9%** | **18.9%** | 해당 평가에서 증가 |
+| HEx-PHI average score | **2.43** | **2.66** | 평균 위험도 증가 |
 
-## Pipeline
+**핵심 발견은 'Power High가 무조건 더 위험하다'가 아닙니다.** 전체 비율만으로는 보이지 않는 **위험 유형별 변화(risk redistribution)**가 관찰됐습니다.
 
-The reproduction follows the paper's VIM flow with three main stages.
+### Risk profile changes · BeaverTails
 
-```text
-Value distribution
-        |
-        v
-ValueEval-based preprocessing
-        |
-        v
-Argument Generation training
-        |
-        v
-Survey Alignment training
-        |
-        v
-Safety inference on BeaverTails and HEx-PHI
-        |
-        v
-GPT-4o / Duo Judge evaluation
-        |
-        v
-High-vs-Low category analysis
+![BeaverTails category-level safety differences](beaver_category_delta.png)
+
+| Categories with higher unsafe rate in Power High | Observed difference |
+|:--|--:|
+| Financial crime / theft | +0.080 |
+| Hate speech / offensive language | +0.078 |
+| Privacy violation | +0.042 |
+
+유형별 결과의 일부는 반대 방향으로 이동했습니다. 이 수치는 **해당 조건의 평가 결과**이며 각 유형의 원인이나 일반적인 인과효과까지 입증하는 것은 아닙니다.
+
+[Additional category visualization →](beaver_category_combined.png)
+
+## Experimental Setup
+
+**Control:** Power 값만 다르게 설정하고 다른 가치 차원은 동일한 중립값으로 유지했습니다.
+
+| Condition | Power | Other nine values |
+|:--|--:|:--|
+| \`power_low\` | **1.0** | 3.0 |
+| \`power_high\` | **6.0** | 3.0 |
+
+- **Base model:** \`mistralai/Mistral-7B-v0.1\` (원 논문에서 사용한 기반 모델과 다름)
+- **Fine-tuning:** Value Injection Method (VIM), LoRA/PEFT
+- **Survey:** ValueEval-style responses on 1–6 scale
+- **Safety datasets:** BeaverTails (700 prompts), HEx-PHI
+- **Inference & judging:** vLLM, GPT-4o / Duo Judge
+
+## Method
+
+```mermaid
+flowchart TD
+  A["Power high / low value profiles"] --> B["ValueEval preprocessing"]
+  B --> C["Argument generation · LoRA"]
+  C --> D["Survey alignment · LoRA"]
+  D --> E["ValueEval-style Power survey"]
+  D --> F["Safety inference"]
+  F --> G["BeaverTails + HEx-PHI"]
+  G --> H["GPT-4o / Duo Judge evaluation"]
+  H --> I["Overall and category-level comparison"]
 ```
 
-### 1. Argument Generation Training
+### What was reproduced
 
-The preprocessing step uses `data/extreme_distributions.csv` and `data/valueEval_10.csv`
-to split ValueEval examples into positive and negative argument data for each target
-distribution.
+1. 동일한 기반 모델에서 Power High/Low 값만 변경해 두 학습 조건 생성
+2. VIM 학습과 설문 응답을 통해 **Power 방향의 상대적 차이** 확인
+3. 같은 위해성 질문에 대한 응답을 생성한 뒤 GPT-4o 기반 평가
+4. 전체 위험 응답률과 위험 유형별 차이를 구분해 분석
 
-The argument-generation model is then LoRA-tuned so that it learns what the target value
-profile would or would not endorse.
+## Reproduction
 
-Relevant files:
-
-- `src/preprocessing.py`
-- `src/train_argument.py`
-- `src/dataset/d_argument.py`
-- `scripts/initialize.sh`
-- `scripts/train_vim.sh`
-
-### 2. Survey Alignment Training
-
-The survey stage validates whether the trained model actually responds according to the
-target value profile. The model is trained to answer ValueEval-style survey questions on
-a 1-to-6 scale.
-
-Relevant files:
-
-- `src/train_argument_survey.py`
-- `src/dataset/d_survey.py`
-
-Observed Power means from the survey validation:
-
-| Model | Predicted Power Mean |
-| --- | ---: |
-| `power_low` | ~2.90 |
-| `power_high` | ~3.27 |
-
-The absolute values are compressed toward the middle, but the ordering is correct:
-`power_high` shows a higher Power tendency than `power_low`.
-
-### 3. Safety Inference
-
-After survey alignment, the two value-aligned models are evaluated on harmful/adversarial
-prompts.
-
-Safety datasets:
-
-- `BeaverTails-Evaluation`: harmfulness classification by category
-- `HEx-PHI`: risk severity evaluation with Duo Score
-
-Inference uses free-form generation with an instruction-style prompt.
-
-Relevant files:
-
-- `src/inference_VIM.py`
-- `src/inference_vanilla.py`
-- `src/inference_ICL.py`
-- `utils/utils.py`
-- `utils/prompt_templates.py`
-
-## Environment
-
-The original README lists Python 3.13, but the reproduction was run with Python 3.11
-because several GPU and package dependencies were not stable under Python 3.13.
-
-Final reproduction environment:
-
-| Component | Setting |
-| --- | --- |
-| Python | 3.11 |
-| Base model | `mistralai/Mistral-7B-v0.1` |
-| Training | LoRA / PEFT |
-| Inference | vLLM |
-| Precision | FP16 |
-| Batch size | 8 for safety inference |
-| Max tokens | 64 for BeaverTails and HEx-PHI |
-| Judge model | GPT-4o |
-
-## Model Access Note
-
-The original implementation targets `meta-llama/Llama-2-7b-hf`, but that model is gated
-on Hugging Face. During reproduction, access issues with the LLaMA 2 gated repository
-blocked the run, so the base model was changed to:
-
-```text
-mistralai/Mistral-7B-v0.1
-```
-
-The experiment keeps the same VIM logic while changing the base model to avoid delaying
-the reproduction.
-
-## Checkpoints and Results
-
-The final safety inference used the Mistral VIM checkpoints:
-
-```text
-ckpt/argument_survey/mistral/min_TH_3/
-├── power_high_631/epoch_3
-└── power_low_631/epoch_3
-```
-
-BeaverTails inference outputs:
-
-```text
-results/
-├── mistral-7b-VIM-beavertails_results_high/
-│   └── beavertails_results.json
-└── mistral-7b-VIM-beavertails_results_low/
-    └── beavertails_results.json
-```
-
-GPT-4o evaluation outputs:
-
-```text
-results/
-├── mistral-7b-VIM-beavertails_results_high/gpt-4o_eval_output/
-└── mistral-7b-VIM-beavertails_results_low/gpt-4o_eval_output/
-```
-
-## Main Results
-
-### BeaverTails
-
-Overall harmfulness changed only slightly.
-
-| Model | Unsafe Rate |
-| --- | ---: |
-| Power Low | 0.727 |
-| Power High | 0.730 |
-
-The important result is the category-level shift.
-
-Categories where Power High increased risk:
-
-| Category | Delta |
-| --- | ---: |
-| Terrorism / Organized Crime | +0.100 |
-| Financial Crime / Property Crime / Theft | +0.080 |
-| Hate Speech / Offensive Language | +0.078 |
-| Privacy Violation | +0.042 |
-| Adult Content | +0.041 |
-| Non-violent Unethical Behavior | +0.040 |
-
-Categories where Power High decreased risk:
-
-| Category | Delta |
-| --- | ---: |
-| Drug Abuse / Weapons / Banned Substance | -0.090 |
-| Controversial Topics / Politics | -0.086 |
-| Misinformation regarding Ethics, Laws, and Safety | -0.086 |
-| Animal Abuse | -0.071 |
-
-Interpretation:
-
-Power does not meaningfully increase the total harmfulness rate on BeaverTails, but it
-does increase risk in categories related to domination, crime, privacy, and coercive
-social behavior.
-
-### HEx-PHI
-
-HEx-PHI shows a clearer increase in average harmfulness under Power High.
-
-| Model | Harmfulness Score | Harmfulness Rate |
-| --- | ---: | ---: |
-| Power Low | 2.43 | 15.9% |
-| Power High | 2.66 | 18.9% |
-
-Risk areas where Power High increased average score:
-
-| Category | Delta Avg Score |
-| --- | ---: |
-| Fraud and Deception | +0.81 |
-| Malware | +0.70 |
-| Economic Harm | +0.66 |
-| Political Manipulation | +0.50 |
-| Privacy Violation | +0.46 |
-
-Risk areas where Power High decreased average score:
-
-| Category | Delta Avg Score |
-| --- | ---: |
-| Physical Harm | -0.43 |
-| Hate / Harassment / Violence | -0.24 |
-| Illegal Activity | -0.18 |
-
-Interpretation:
-
-The risk profile shifts away from direct physical harm and toward manipulation,
-deception, system exploitation, and control-oriented behavior.
-
-## Qualitative Observation
-
-Manual inspection of model generations showed a consistent style difference:
-
-| Model | Observed Response Tendency |
-| --- | --- |
-| `power_low` | More cautious, more likely to refuse, more norm- or ethics-oriented |
-| `power_high` | More assertive, more authority-oriented, more likely to accept the premise of harmful requests |
-
-For safety reasons, this README summarizes qualitative examples instead of reproducing
-actionable harmful generations verbatim.
-
-## Comparison with the Paper
-
-The reproduction supports the paper's central claim:
-
-> Emphasizing a value can increase particular types of safety risk.
-
-The strongest match is not at the level of every individual category, but at the broader
-mechanism level: value alignment changes the model's behavioral disposition, and this
-can amplify specific harmful behaviors.
-
-| Finding | Reproduction Result |
-| --- | --- |
-| Value injection changes model behavior | Supported |
-| Power High produces higher Power tendency in survey validation | Supported |
-| Power High monotonically increases all harmfulness | Not supported |
-| Power High increases control/manipulation/system-abuse risk | Supported |
-| Risk type shifts across categories | Supported |
-
-## How to Run
-
-### 1. Install Dependencies
+**Environment used:** Python 3.11, Mistral-7B, FP16, PEFT, vLLM; GPU 및 원본 데이터/모델 접근이 필요합니다.
 
 ```bash
+git clone https://github.com/Ai-pre/Value-Aligned-LLM-Safety-validation.git
+cd Value-Aligned-LLM-Safety-validation
+
 conda create -n vim-power python=3.11 -y
 conda activate vim-power
 pip install -r requirements.txt
-```
-
-### 2. Prepare Value Data
-
-```bash
 bash scripts/initialize.sh
 ```
 
-### 3. Train VIM Models
+학습과 추론은 모델 접근권한, LoRA 출력 경로, GPU 설정을 확인한 뒤 진행해야 합니다. 일부 원본 스크립트에는 LLaMA 기반의 기본 경로가 남아 있으므로 **Mistral 설정으로 조정**해야 합니다.
 
-The repository contains the original training scripts. For this reproduction, the base
-model was changed to Mistral and only the two Power distributions were used.
+| Step | Code |
+|:--|:--|
+| Preprocess | [\`src/preprocessing.py\`](src/preprocessing.py) |
+| Argument training | [\`src/train_argument.py\`](src/train_argument.py) |
+| Survey alignment | [\`src/train_argument_survey.py\`](src/train_argument_survey.py) |
+| Safety inference | [\`src/inference_VIM.py\`](src/inference_VIM.py) |
+| Evaluation | [\`evaluate/gpt4_eval.py\`](evaluate/gpt4_eval.py) |
+| Full instructions | [Original detailed README](docs/README_BEFORE_PORTFOLIO_REFRESH.md) |
 
-```bash
-python src/train_argument.py \
-  --distribution_name power_high \
-  --GPU_NUM 0 \
-  --model_name mistral \
-  --model_name_or_path mistralai/Mistral-7B-v0.1 \
-  --train_base_dir ./data/values \
-  --batch_size 8
+## Limitations
 
-python src/train_argument_survey.py \
-  --distribution_name power_high \
-  --GPU_NUM 0 \
-  --model_name mistral \
-  --model_name_or_path mistralai/Mistral-7B-v0.1 \
-  --argument_generation_dir ./data/argument_generation/value_split \
-  --batch_size 8
-```
+- **Modified reproduction:** LLaMA 2 기반 원본 조건을 Mistral-7B로 변경했습니다.
+- **Value direction:** Power 설문에서 High가 Low보다 높았지만, 목표 값 1과 6을 정확하게 재현한 것은 아닙니다.
+- **Evaluation:** GPT-4o/Duo Judge 및 표본·카테고리의 한계가 있습니다. 유형별 효과의 일반적 인과성을 규명한 결과가 아닙니다.
+- **Claim scope:** 새로운 안전성 향상 알고리즘을 개발한 것이 아니라, 가치 주입 전후의 **행동 및 위험 양상**을 비교했습니다.
 
-Repeat the same commands for `power_low`.
+## References & Credits
 
-### 4. Run Safety Inference
+**Source paper:** Choi et al., *Unintended Harms of Value-Aligned LLMs: Psychological and Empirical Insights*, ACL 2025. [Paper →](https://aclanthology.org/2025.acl-long.1532/)
 
-```bash
-python src/inference_VIM.py \
-  --dataset_name beavertails \
-  --home_directory . \
-  --batch_size 8 \
-  --max_tokens 64 \
-  --peft_path ./ckpt/argument_survey/mistral/min_TH_3/power_high_631/epoch_3 \
-  --output_path ./results/mistral-7b-VIM-beavertails_results_high
+원 논문의 방법을 기반으로 한 **재현·분석 프로젝트**이며 원 연구진의 독창적 방법을 본인이 새로 제안한 것으로 주장하지 않습니다.
 
-python src/inference_VIM.py \
-  --dataset_name beavertails \
-  --home_directory . \
-  --batch_size 8 \
-  --max_tokens 64 \
-  --peft_path ./ckpt/argument_survey/mistral/min_TH_3/power_low_631/epoch_3 \
-  --output_path ./results/mistral-7b-VIM-beavertails_results_low
-```
+---
 
-Use `--dataset_name HEx-PHI` for HEx-PHI inference.
+<div align="center">
 
-### 5. Run GPT-4o Safety Evaluation
+**A similar overall safety score can hide different kinds of failure.**
 
-```bash
-python evaluate/gpt4_eval.py \
-  --dataset_name beavertails \
-  --openai_modelname gpt-4o \
-  --target_result_path ./results/mistral-7b-VIM-beavertails_results_high
+[Portfolio ↗](https://ai-pre.github.io/Ai-pre/) · [Full experiment notes ↗](https://app.notion.com/p/35706d3e45248015bde3ceba78cb4770)
 
-python evaluate/gpt4_eval.py \
-  --dataset_name beavertails \
-  --openai_modelname gpt-4o \
-  --target_result_path ./results/mistral-7b-VIM-beavertails_results_low
-```
-
-## Important Notes
-
-- Keep API keys out of the repository. Use environment variables or a local `.env` file.
-- Large checkpoint files should be tracked with Git LFS if they are pushed to GitHub.
-- Some scripts in the original reproduction code still contain LLaMA-oriented defaults.
-  For the Power experiment, update paths and model names to Mistral before running.
-- The safety evaluation contains harmful prompts and model outputs. Handle generated
-  result files carefully when making the repository public.
-
-## Repository Structure
-
-```text
-.
-├── data/                  # ValueEval, BeaverTails, HEx-PHI, and auxiliary datasets
-├── evaluate/              # GPT-4o, Duo Judge, Perspective, and bias evaluation scripts
-├── scripts/               # Shell entrypoints for training, inference, and evaluation
-├── src/                   # VIM preprocessing, training, and inference code
-├── utils/                 # Prompt templates, constants, dataset loading, utilities
-├── requirements.txt
-└── README.md
-```
-
-## Citation
-
-```bibtex
-@inproceedings{choi-etal-2025-unintended,
-    title = "Unintended Harms of Value-Aligned {LLM}s: Psychological and Empirical Insights",
-    author = "Choi, Sooyung and Lee, Jaehyeok and Yi, Xiaoyuan and Yao, Jing and Xie, Xing and Bak, JinYeong",
-    booktitle = "Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
-    year = "2025",
-    url = "https://aclanthology.org/2025.acl-long.1532/",
-    doi = "10.18653/v1/2025.acl-long.1532"
-}
-```
+</div>
